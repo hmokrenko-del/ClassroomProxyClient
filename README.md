@@ -23,28 +23,18 @@ For classroom stability, pin a tag (`#v0.1.2`) instead of using `main`.
 
 ## Student config
 
-Copy:
-
-- `include/classroom_config.example.h` -> `include/classroom_config.h`
-- `.env.example` -> `.env`
-
 Then:
 
 - fill Wi-Fi + proxy host in `include/classroom_config.h`
 - fill Gemini/API/webhook values in `.env`
 - run `tools/start_proxy.ps1`
 
-## Auto-bootstrap config in PlatformIO projects
+## Auto-bootstrap config on first build
 
-To auto-create `include/classroom_config.h` on first build, add this to your project `platformio.ini`:
+Starting from this release, the library runs its own bootstrap script (`build.extraScript` in `library.json`).
+No extra script entry is required in student `platformio.ini`.
 
-```ini
-extra_scripts =
-  pre:scripts/bootstrap_classroom_config.py
-```
-
-And place this script in your project at `scripts/bootstrap_classroom_config.py`.
-The script creates these files if they don't exist:
+On first build the library creates these files if they don't exist:
 
 - `include/classroom_config.h`
 - `.env.example`
@@ -56,7 +46,7 @@ Templates are resolved from:
 2. `.env.example` (project-level)
 3. `lib/ClassroomProxyClient/templates/classroom_config.example.h` (local dev)
 4. `lib/ClassroomProxyClient/templates/.env.example` (local dev)
-5. `.pio/libdeps/<env>/ClassroomProxyClient/templates/...` (GitHub `lib_deps`)
+5. `templates/...` inside installed library from `.pio/libdeps/<env>/ClassroomProxyClient`
 
 The script does not overwrite existing files.
 
