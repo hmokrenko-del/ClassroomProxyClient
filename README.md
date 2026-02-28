@@ -16,10 +16,10 @@ Add to `platformio.ini`:
 ```ini
 lib_deps =
   bblanchon/ArduinoJson @ ^6.21.5
-  https://github.com/YOUR_ORG/ClassroomProxyClient.git#v0.1.2
+  https://github.com/YOUR_ORG/ClassroomProxyClient.git#v0.1.3
 ```
 
-For classroom stability, pin a tag (`#v0.1.2`) instead of using `main`.
+For classroom stability, pin a tag (`#v0.1.3`) instead of using `main`.
 
 ## Student config
 
