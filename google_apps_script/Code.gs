@@ -6,7 +6,7 @@
 // 3) Deploy as Web App (Execute as: Me, Access: Anyone with the link).
 // 4) Put the Web App URL into GOOGLE_DOC_WEBHOOK_URL for proxy.py.
 
-const DOC_ID = "1DT2IBHgeKhtu4fjy7hr1zZqXzsZZt7viBHjOS69CXnk";
+const DOC_ID = "ВАШ_DOC_ID";
 const WEBHOOK_TOKEN = "my-secret-token"; // Optional shared secret. Leave empty to disable token check.
 
 function doPost(e) {
@@ -40,6 +40,9 @@ function doPost(e) {
     }
     if (action === "sheets_read_range") {
       return handleSheetsReadRange_(payload);
+    }
+    if (action === "sheets_read_last_rows") {
+      return handleSheetsReadLastRows_(payload);
     }
 
     return jsonResponse_({ ok: false, error: "Unknown action: " + action });
@@ -289,6 +292,74 @@ function handleSheetsReadRange_(payload) {
   });
 }
 
+function handleSheetsReadLastRows_(payload) {
+  const spreadsheetId = toText_(payload.spreadsheetId);
+  const sheetName = toText_(payload.sheetName);
+  const lastRowsRaw = parseOptionalInt_(payload.lastRows);
+
+  if (!spreadsheetId) {
+    return jsonResponse_({ ok: false, error: "Missing spreadsheetId" });
+  }
+  if (!sheetName) {
+    return jsonResponse_({ ok: false, error: "Missing sheetName" });
+  }
+  if (lastRowsRaw === null) {
+    return jsonResponse_({ ok: false, error: "Missing lastRows" });
+  }
+  if (lastRowsRaw <= 0) {
+    return jsonResponse_({ ok: false, error: "lastRows must be >= 1" });
+  }
+
+  const ss = SpreadsheetApp.openById(spreadsheetId);
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    return jsonResponse_({ ok: false, error: "Sheet not found: " + sheetName });
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastColumn = sheet.getLastColumn();
+
+  if (lastRow <= 0 || lastColumn <= 0) {
+    return jsonResponse_({
+      ok: true,
+      action: "sheets_read_last_rows",
+      spreadsheetId: spreadsheetId,
+      sheetName: sheetName,
+      lastRowsRequested: lastRowsRaw,
+      lastRow: lastRow,
+      fromRow: 0,
+      toRow: 0,
+      range: "",
+      rowCount: 0,
+      columnCount: 0,
+      values: [],
+      text: ""
+    });
+  }
+
+  const fromRow = Math.max(1, lastRow - lastRowsRaw + 1);
+  const numRows = lastRow - fromRow + 1;
+  const values = sheet.getRange(fromRow, 1, numRows, lastColumn).getDisplayValues();
+  const toColumnA1 = columnToA1_(lastColumn);
+  const rangeA1 = sheetName + "!A" + fromRow + ":" + toColumnA1 + lastRow;
+
+  return jsonResponse_({
+    ok: true,
+    action: "sheets_read_last_rows",
+    spreadsheetId: spreadsheetId,
+    sheetName: sheetName,
+    lastRowsRequested: lastRowsRaw,
+    lastRow: lastRow,
+    fromRow: fromRow,
+    toRow: lastRow,
+    range: rangeA1,
+    rowCount: values.length,
+    columnCount: values.length > 0 ? values[0].length : 0,
+    values: values,
+    text: matrixToText_(values)
+  });
+}
+
 function requireDefaultDocId_() {
   if (!DOC_ID || DOC_ID === "PUT_GOOGLE_DOC_ID_HERE") {
     return { ok: false, response: jsonResponse_({ ok: false, error: "DOC_ID is not configured" }) };
@@ -329,6 +400,20 @@ function matrixToText_(matrix) {
       return row.map(function(cell) { return toText_(cell); }).join("\t");
     })
     .join("\n");
+}
+
+function columnToA1_(columnIndex) {
+  let n = Number(columnIndex);
+  if (!isFinite(n) || n <= 0) return "A";
+  n = Math.floor(n);
+
+  let out = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    out = String.fromCharCode(65 + rem) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out || "A";
 }
 
 function parseOptionalInt_(value) {

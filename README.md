@@ -376,7 +376,15 @@ GOOGLE_DOC_WEBHOOK_TOKEN=my-secret-token
 
 Після зміни `.env` перезапустіть proxy.
 
-### 15.5 Швидка перевірка з ПК (PowerShell)
+### 15.5 Швидка перевірка: важливо який термінал використовується
+
+Перед запуском тестів перевірте shell:
+- якщо у терміналі запрошення виду `PS C:\...>` або `PS E:\...>` -> це **PowerShell**, використовуйте `Invoke-RestMethod`;
+- якщо у терміналі запрошення виду `user@...$` (або просто `$`) -> це **bash** (типово у Codespaces), використовуйте `curl`.
+
+Якщо запустити PowerShell-команди в bash, будуть помилки `command not found`.
+
+### 15.5.1 Перевірка з ПК (PowerShell)
 
 Перевірка прямого виклику Web App:
 
@@ -437,6 +445,39 @@ $body = @{
   values = @("2026-03-01T12:00:00Z","student-01","23.7","81")
 } | ConvertTo-Json -Depth 5 -Compress
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8080/sheets/appendRow" -ContentType "application/json" -Body $body
+```
+
+### 15.5.2 Перевірка у Codespaces (bash)
+
+Перевірка через proxy (health):
+
+```bash
+curl -s http://127.0.0.1:8080/health
+```
+
+Запис у Google Sheets через proxy:
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/sheets/appendRow \
+  -H "Content-Type: application/json" \
+  -d '{"spreadsheetId":"PUT_SPREADSHEET_ID_HERE","sheetName":"Sheet1","values":["2026-03-01T12:00:00Z","student-01","23.7","81"]}'
+```
+
+Читання з Google Sheets через proxy:
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/sheets/readRange \
+  -H "Content-Type: application/json" \
+  -d '{"spreadsheetId":"PUT_SPREADSHEET_ID_HERE","sheetName":"Sheet1","range":"A1:D20"}'
+```
+
+Прямий виклик Web App (без proxy) у bash:
+
+```bash
+WEBHOOK="https://script.google.com/macros/s/XXXXXXXXXXXX/exec"
+curl -s -X POST "$WEBHOOK" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"sheets_append_row","spreadsheetId":"PUT_SPREADSHEET_ID_HERE","sheetName":"Sheet1","values":["2026-03-01T12:00:00Z","student-01","23.7","81"],"token":"my-secret-token"}'
 ```
 
 ### 15.6 Важливо після редагування `Code.gs`

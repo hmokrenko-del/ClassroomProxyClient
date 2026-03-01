@@ -115,6 +115,7 @@ ClassroomProxyClient::Config::Config()
       driveReadLinesPath("/drive/readLines"),
       sheetsAppendRowPath("/sheets/appendRow"),
       sheetsReadRangePath("/sheets/readRange"),
+      sheetsReadLastRowsPath("/sheets/readLastRows"),
       defaultGeminiModel("gemini-2.5-flash"),
       clientName("esp32"),
       serialBaud(115200),
@@ -552,6 +553,52 @@ bool ClassroomProxyClient::sheetsReadRange(
 
   DynamicJsonDocument responseDoc(24576);
   if (!proxyJsonRequest(config_.sheetsReadRangePath, requestDoc, responseDoc, errorText)) {
+    return false;
+  }
+
+  if (responseDoc["text"].is<const char*>()) {
+    text = responseDoc["text"].as<const char*>();
+  }
+  if (text.isEmpty()) {
+    text = extractTableText(responseDoc.as<JsonVariantConst>(), "values");
+  }
+  if (text.isEmpty()) {
+    errorText = "Proxy returned no 'text' or 'values'.";
+    return false;
+  }
+  return true;
+}
+
+bool ClassroomProxyClient::sheetsReadLastRows(
+    const String& spreadsheetId,
+    const String& sheetName,
+    int lastRows,
+    String& text,
+    String& errorText) {
+  text = "";
+  errorText = "";
+  if (spreadsheetId.isEmpty()) {
+    errorText = "spreadsheetId is empty.";
+    return false;
+  }
+  if (sheetName.isEmpty()) {
+    errorText = "sheetName is empty.";
+    return false;
+  }
+  if (lastRows < 1) {
+    errorText = "lastRows must be >= 1.";
+    return false;
+  }
+
+  DynamicJsonDocument requestDoc(2048);
+  requestDoc["spreadsheetId"] = spreadsheetId;
+  requestDoc["sheetName"] = sheetName;
+  requestDoc["lastRows"] = lastRows;
+  requestDoc["device"] = config_.clientName;
+  requestDoc["session"] = sessionId_;
+
+  DynamicJsonDocument responseDoc(24576);
+  if (!proxyJsonRequest(config_.sheetsReadLastRowsPath, requestDoc, responseDoc, errorText)) {
     return false;
   }
 

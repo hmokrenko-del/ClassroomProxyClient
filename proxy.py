@@ -36,6 +36,7 @@ class GeminiProxyHandler(BaseHTTPRequestHandler):
     drive_read_lines_path = "/drive/readLines"
     sheets_append_row_path = "/sheets/appendRow"
     sheets_read_range_path = "/sheets/readRange"
+    sheets_read_last_rows_path = "/sheets/readLastRows"
 
     def _safe_str(self, value: object, max_len: int = 256) -> str:
         if not isinstance(value, str):
@@ -299,6 +300,66 @@ class GeminiProxyHandler(BaseHTTPRequestHandler):
 
         self._write_json(200, resp)
 
+    def _handle_sheets_read_last_rows(self, request_body: dict) -> None:
+        spreadsheet_id = self._safe_str(request_body.get("spreadsheetId"), 256)
+        sheet_name = self._safe_str(request_body.get("sheetName"), 128)
+        last_rows = request_body.get("lastRows")
+
+        if not spreadsheet_id:
+            self._write_json(400, {"error": "Field 'spreadsheetId' is required"})
+            return
+        if not sheet_name:
+            self._write_json(400, {"error": "Field 'sheetName' is required"})
+            return
+        if isinstance(last_rows, bool) or not isinstance(last_rows, int):
+            self._write_json(400, {"error": "Field 'lastRows' must be an integer >= 1"})
+            return
+        if last_rows < 1:
+            self._write_json(400, {"error": "Field 'lastRows' must be >= 1"})
+            return
+
+        payload = {
+            "action": "sheets_read_last_rows",
+            "spreadsheetId": spreadsheet_id,
+            "sheetName": sheet_name,
+            "lastRows": last_rows,
+            "device": self._safe_str(request_body.get("device"), 120) or "esp32",
+            "session": self._safe_str(request_body.get("session"), 120),
+        }
+
+        status, parsed, error_msg = self._call_apps_script(payload)
+        if error_msg:
+            self._write_json(status if status else 502, {"error": error_msg})
+            return
+        if not parsed:
+            self._write_json(502, {"error": "Apps Script returned empty response"})
+            return
+
+        resp = {}
+        if isinstance(parsed.get("text"), str):
+            resp["text"] = parsed["text"]
+        if isinstance(parsed.get("values"), list):
+            resp["values"] = parsed["values"]
+        for key in (
+            "spreadsheetId",
+            "sheetName",
+            "range",
+            "lastRowsRequested",
+            "lastRow",
+            "fromRow",
+            "toRow",
+            "rowCount",
+            "columnCount",
+        ):
+            if key in parsed:
+                resp[key] = parsed[key]
+
+        if "text" not in resp and "values" not in resp:
+            self._write_json(502, {"error": "Apps Script returned no 'text' or 'values'"})
+            return
+
+        self._write_json(200, resp)
+
     def _post_log_webhook(self, event: dict) -> None:
         if not self.log_webhook_url:
             return
@@ -381,6 +442,7 @@ class GeminiProxyHandler(BaseHTTPRequestHandler):
                     "drive_read_lines_path": self.drive_read_lines_path,
                     "sheets_append_row_path": self.sheets_append_row_path,
                     "sheets_read_range_path": self.sheets_read_range_path,
+                    "sheets_read_last_rows_path": self.sheets_read_last_rows_path,
                     "apps_script_webhook_configured": bool(self.log_webhook_url),
                 },
             )
@@ -406,6 +468,9 @@ class GeminiProxyHandler(BaseHTTPRequestHandler):
             return
         if self.path == self.sheets_read_range_path:
             self._handle_sheets_read_range(request_body)
+            return
+        if self.path == self.sheets_read_last_rows_path:
+            self._handle_sheets_read_last_rows(request_body)
             return
         if self.path != self.endpoint_path:
             self._write_json(404, {"error": f"Use POST {self.endpoint_path}"})

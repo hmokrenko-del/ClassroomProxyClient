@@ -16,4 +16,9 @@
 #define GEMINI_MODEL "gemini-2.5-flash"
 #define GEMINI_CLIENT_NAME "student-01"
 
+// Google Sheets target for telemetry logging
+// Spreadsheet ID from:
+// https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit
+#define GOOGLE_SHEETS_ID "PUT_SPREADSHEET_ID_HERE"
+#define GOOGLE_SHEETS_SHEET "Sheet1"
 

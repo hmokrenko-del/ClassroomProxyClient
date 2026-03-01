@@ -16,6 +16,7 @@ class ClassroomProxyClient {
     const char* driveReadLinesPath;
     const char* sheetsAppendRowPath;
     const char* sheetsReadRangePath;
+    const char* sheetsReadLastRowsPath;
     const char* defaultGeminiModel;
     const char* clientName;
     uint32_t serialBaud;
@@ -63,6 +64,12 @@ class ClassroomProxyClient {
       const String& spreadsheetId,
       const String& sheetName,
       const String& rangeA1,
+      String& text,
+      String& errorText);
+  bool sheetsReadLastRows(
+      const String& spreadsheetId,
+      const String& sheetName,
+      int lastRows,
       String& text,
       String& errorText);
 
