@@ -1,62 +1,381 @@
-# ClassroomProxyClient (Local Dev Version)
+# ClassroomProxyClient
 
-ESP32 Arduino library for classroom proxy workflows:
-- Gemini prompts via local/shared proxy
-- serial console helper for Wokwi / USB monitor
-- Google Docs / Google Drive wrappers via proxy (`/doc/append`, `/drive/readText`, `/drive/readLines`)
+Бібліотека для ESP32 (Arduino), яка працює через локальний/хмарний proxy:
+- Gemini (`/gemini`)
+- Google Doc append (`/doc/append`)
+- Google Drive read text/lines (`/drive/readText`, `/drive/readLines`)
+- Google Sheets append/read (`/sheets/appendRow`, `/sheets/readRange`)
 
-## Usage in this repo (local development)
+Цей документ написаний як покрокова інструкція для студентів у режимі:
+**Codespaces (браузер на ПК) + Wokwi + локальний proxy.py у Codespaces**.
 
-PlatformIO automatically picks up libraries from the `lib/` folder.
+## 1. Що потрібно підготувати
 
-## Usage from GitHub (after publishing)
+1. GitHub акаунт.
+2. Репозиторій з PlatformIO-проєктом (ESP32).
+3. API ключ Gemini (`GEMINI_API_KEY`).
+4. (Опційно) Google Apps Script Web App URL для Google Doc/Drive:
+   - `GOOGLE_DOC_WEBHOOK_URL`
+   - `GOOGLE_DOC_WEBHOOK_TOKEN` (якщо ввімкнено в `Code.gs`)
+5. Установлений Wokwi plugin у VS Code/Codespaces.
 
-Add to `platformio.ini`:
+## 2. Підключення бібліотеки в PlatformIO
+
+В `platformio.ini` додайте:
 
 ```ini
+[env:esp32dev]
+platform = espressif32
+board = esp32dev
+framework = arduino
+monitor_speed = 115200
+upload_speed = 921600
+
 lib_deps =
   bblanchon/ArduinoJson @ ^6.21.5
-  https://github.com/YOUR_ORG/ClassroomProxyClient.git#v0.1.3
+  https://github.com/hmokrenko-del/ClassroomProxyClient.git#v0.1.3
 ```
 
-For classroom stability, pin a tag (`#v0.1.3`) instead of using `main`.
+Рекомендація: використовуйте **тег** (`#v0.1.3` або новіший), а не `main`.
 
-## Student config
+## 3. Перший Build і автостворення файлів
 
-Then:
+1. Запустіть `PlatformIO: Build`.
+2. На першій збірці бібліотека (bootstrap) створює, якщо файлів немає:
+   - `include/classroom_config.h`
+   - `.env.example`
+   - `.env`
 
-- fill Wi-Fi + proxy host in `include/classroom_config.h`
-- fill Gemini/API/webhook values in `.env`
-- run `tools/start_proxy.ps1`
+Якщо автостворення не спрацювало:
+1. Скопіюйте вручну:
+   - `templates/classroom_config.example.h` -> `include/classroom_config.h`
+   - `templates/.env.example` -> `.env.example`
+   - `.env.example` -> `.env`
 
-## Auto-bootstrap config on first build
+## 4. Налаштування `include/classroom_config.h`
 
-Starting from this release, the library runs its own bootstrap script (`build.extraScript` in `library.json`).
-No extra script entry is required in student `platformio.ini`.
+Для Codespaces + Wokwi використовуйте:
 
-On first build the library creates these files if they don't exist:
+```cpp
+#define WIFI_SSID "Wokwi-GUEST"
+#define WIFI_PASSWORD ""
 
-- `include/classroom_config.h`
-- `.env.example`
-- `.env`
+#define GEMINI_PROXY_HOST "host.wokwi.internal"
+#define GEMINI_PROXY_PORT 8080
+#define GEMINI_PROXY_PATH "/gemini"
 
-Templates are resolved from:
+#define GEMINI_MODEL "gemini-2.5-flash"
+#define GEMINI_CLIENT_NAME "student-01"
+```
 
-1. `include/classroom_config.example.h` (project-level)
-2. `.env.example` (project-level)
-3. `lib/ClassroomProxyClient/templates/classroom_config.example.h` (local dev)
-4. `lib/ClassroomProxyClient/templates/.env.example` (local dev)
-5. `templates/...` inside installed library from `.pio/libdeps/<env>/ClassroomProxyClient`
+`host.wokwi.internal` означає: ESP32 у Wokwi звертається до хоста, де працює `wokwigw` (у нашому випадку Codespace).
 
-The script does not overwrite existing files.
+## 5. Налаштування `.env`
 
-## Serial commands (built-in demo console)
+Мінімально:
 
-- `/demo` - send a Gemini test prompt
-- `/docappend <text>` - append a line/paragraph to the default Google Doc (Apps Script webhook)
-- `/drivetext <fileId>` - read full text from a Google Doc or text file on Drive
-- `/drivelines <fileId> [from] [to]` - read all or a line range (1-based) from a Google Doc/text file
+```dotenv
+GEMINI_API_KEY=PUT_YOUR_GEMINI_API_KEY_HERE
+PROXY_HOST=0.0.0.0
+PROXY_PORT=8080
+PROXY_PATH=/gemini
+PROXY_MODEL=gemini-2.5-flash
+```
 
-Notes:
-- `fileId` is the Google Drive file ID from the file URL.
-- `Google Sheets` are not supported by `drive_read_text` yet (use Google Doc or a text file for now).
+Для Google Doc/Drive:
+
+```dotenv
+GOOGLE_DOC_WEBHOOK_URL=https://script.google.com/macros/s/XXXXXXXX/exec
+GOOGLE_DOC_WEBHOOK_TOKEN=my-secret-token
+```
+
+## 6. Налаштування `wokwi.toml` для Codespaces
+
+`wokwi.toml` має містити:
+
+```toml
+[wokwi]
+version = 1
+firmware = '.pio/build/esp32dev/firmware.bin'
+elf = '.pio/build/esp32dev/firmware.elf'
+
+[net]
+gateway = "wss://<YOUR-CODESPACE>-9011.app.github.dev"
+```
+
+Важливо:
+1. Для Codespaces потрібен саме `wss://...`, не `ws://localhost:9011`.
+2. URL береться з вкладки `Ports` для порту `9011`.
+
+## 7. Запуск `wokwigw` у Codespaces
+
+Відкрийте термінал A і виконайте:
+
+```bash
+go install github.com/wokwi/wokwigw/cmd/wokwigw@latest
+$(go env GOPATH)/bin/wokwigw --listenPort 9011
+```
+
+Потім у вкладці `Ports`:
+1. Переконайтесь, що порт `9011` з’явився.
+2. Виставіть `Visibility = Public` (рекомендовано).
+3. Скопіюйте URL `https://...-9011.app.github.dev`.
+4. Вставте його в `wokwi.toml` як `wss://...`.
+
+## 8. Запуск `proxy.py` у Codespaces
+
+У терміналі B:
+
+```bash
+cd /workspaces/<your-project-folder>
+set -a; source .env; set +a
+python3 ./proxy.py --host 0.0.0.0 --port 8080 --path /gemini
+```
+
+Якщо `proxy.py` відсутній у проєкті, додайте його в корінь (поруч із `platformio.ini`).
+
+## 9. Перевірка proxy перед запуском симуляції
+
+У терміналі C:
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
+Очікувано:
+- `"ok": true`
+- `"apps_script_webhook_configured": true` (якщо задано webhook URL)
+
+Тест запису в Google Doc:
+
+```bash
+curl -X POST http://127.0.0.1:8080/doc/append \
+  -H "Content-Type: application/json" \
+  -d '{"text":"test via proxy","device":"student","session":"manual"}'
+```
+
+## 10. Запуск прошивки в Wokwi
+
+1. `PlatformIO: Build`
+2. Запустіть `Wokwi Simulator`
+3. Перевірте у логах:
+   - підключення до Wi-Fi (`Wokwi-GUEST`)
+   - запити до proxy (`/gemini`, `/doc/append`, `/drive/readText`, `/drive/readLines`)
+
+## 11. Типові помилки і рішення
+
+1. `Failed to connect to IoT Gateway at wss://...`
+   - `wokwigw` не запущений
+   - неправильний URL у `wokwi.toml`
+   - порт `9011` не `Public`
+
+2. `python3: can't open file ... proxy.py`
+   - у проєкті немає `proxy.py` в корені
+
+3. `HTTP proxy error: connection refused`
+   - proxy не запущений або не на порту `8080`
+
+4. `Missing prompt` при webhook-тесті
+   - старий deployment Apps Script
+   - потрібно оновити Web App deployment і перевірити URL `/exec`
+
+5. Компіляція не бачить `classroom_config.h`
+   - перевірте, чи файл існує в `include/classroom_config.h`
+   - якщо авто-bootstrap не спрацював, створіть файл вручну з шаблону
+
+## 12. Безпека
+
+1. Не комітьте реальні ключі в Git:
+   - `GEMINI_API_KEY`
+   - `GOOGLE_DOC_WEBHOOK_TOKEN`
+2. Якщо ключ випадково опублікували, одразу перевипустіть його.
+3. Зберігайте ключі в `.env`, а не в коді.
+
+## 13. Короткий чекліст (для лабораторної)
+
+1. Підключив бібліотеку в `platformio.ini` (через тег).
+2. Заповнив `include/classroom_config.h`.
+3. Заповнив `.env`.
+4. Запустив `wokwigw --listenPort 9011`.
+5. Оновив `wokwi.toml` на `wss://...-9011.app.github.dev`.
+6. Запустив `proxy.py`.
+7. Перевірив `curl http://127.0.0.1:8080/health`.
+8. Зробив `Build`.
+9. Запустив Wokwi.
+10. Переконався, що дані пишуться в Google Doc/читаються з Drive.
+
+## 14. Налаштування Proxy на ПК (Windows)
+
+Цей розділ для сценарію, коли студент запускає proxy.py локально на своєму ПК (не в Codespaces).
+
+1. Відкрийте **PowerShell (вікно №1)** і перейдіть у папку проєкту:
+
+```powershell
+cd E:\<your-project-folder>
+```
+
+2. Переконайтесь, що в корені проєкту є `proxy.py` (поруч із `platformio.ini`).
+
+3. Створіть `.env` (або перевірте, що він вже є) і заповніть мінімум:
+
+```dotenv
+GEMINI_API_KEY=PUT_YOUR_GEMINI_API_KEY_HERE
+PROXY_HOST=0.0.0.0
+PROXY_PORT=8080
+PROXY_PATH=/gemini
+PROXY_MODEL=gemini-2.5-flash
+```
+
+Для Google Doc/Drive (опційно):
+
+```dotenv
+GOOGLE_DOC_WEBHOOK_URL=https://script.google.com/macros/s/XXXXXXXX/exec
+GOOGLE_DOC_WEBHOOK_TOKEN=my-secret-token
+```
+
+4. Запустіть proxy у **вікні №1**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\start_proxy.ps1
+```
+
+Якщо `tools/start_proxy.ps1` відсутній, запустіть proxy напряму.
+Для Windows краще використовувати `py -3` (а не `python`), щоб обійти проблему з Microsoft Store alias:
+
+```powershell
+$env:GEMINI_API_KEY="PUT_YOUR_GEMINI_API_KEY_HERE"
+py -3 .\proxy.py --host 0.0.0.0 --port 8080 --path /gemini
+```
+
+5. Відкрийте **PowerShell (вікно №2)** і перевірте health endpoint:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health
+```
+
+Очікувано:
+- `ok = True`
+- `apps_script_webhook_configured = True` (якщо в `.env` заданий webhook URL)
+
+6. Відкрийте **PowerShell (вікно №3)** і запустіть локальний Wokwi gateway:
+
+```powershell
+.\wokwigw.exe
+```
+
+7. У `wokwi.toml` використовуйте локальний gateway:
+
+```toml
+[net]
+gateway = "ws://localhost:9011"
+```
+
+8. У `include/classroom_config.h` для сценарію ПК + Wokwi:
+
+```cpp
+#define WIFI_SSID "Wokwi-GUEST"
+#define WIFI_PASSWORD ""
+#define GEMINI_PROXY_HOST "host.wokwi.internal"
+#define GEMINI_PROXY_PORT 8080
+#define GEMINI_PROXY_PATH "/gemini"
+```
+
+9. У VS Code: `PlatformIO: Build`, потім перезапустіть `Wokwi Simulator`.
+
+10. Швидка діагностика:
+- `HTTP proxy error: connection refused` -> proxy не запущений або не слухає порт `8080`.
+- `Failed to connect to IoT Gateway` -> не запущений `wokwigw.exe` або в `wokwi.toml` не `ws://localhost:9011`.
+- `Missing prompt` у webhook тестах -> у запиті не передано потрібне поле (`text`/`prompt`) або старий deployment Apps Script.
+
+## 15. Налаштування Google Apps Script (`script.google.com`)
+
+Це налаштування робиться один раз для проєкту, після чого proxy може:
+- писати в Google Docs;
+- читати текст із Google Drive;
+- писати/читати дані в Google Sheets.
+
+### 15.1 Підготуйте Google файли
+
+1. Створіть Google Doc (для логів/тексту).
+2. Створіть Google Sheet (для табличних даних, опційно).
+3. Скопіюйте їхні ID з URL:
+   - Doc ID: `https://docs.google.com/document/d/<DOC_ID>/edit`
+   - Spreadsheet ID: `https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit`
+
+### 15.2 Створіть Apps Script Web App
+
+1. Відкрийте `https://script.google.com/`.
+2. Натисніть `Новий проєкт`.
+3. Відкрийте файл `google_apps_script/Code.gs` у цьому репозиторії.
+4. Замініть вміст `Code.gs` у Apps Script на код із репозиторію.
+5. У верхній частині коду задайте:
+   - `DOC_ID` = ID вашого Google Doc (документ за замовчуванням);
+   - `WEBHOOK_TOKEN` = ваш секретний токен (або порожній рядок, якщо без токена).
+6. Збережіть проєкт (`Ctrl+S`).
+
+### 15.3 Розгортання (Deploy)
+
+1. Натисніть `Розгорнути` -> `Нове розгортання`.
+2. Тип: `Вебпрограма`.
+3. Параметри:
+   - `Виконувати як`: **Я (Me)**.
+   - `Доступ`: **Усі, хто має посилання (Anyone with the link)**.
+4. Натисніть `Розгорнути`.
+5. Підтвердьте дозволи Google (доступ до Docs/Drive/Sheets).
+6. Скопіюйте URL вебпрограми, який закінчується на `/exec`.
+
+### 15.4 Прив’яжіть Web App до proxy
+
+У `.env` заповніть:
+
+```dotenv
+GOOGLE_DOC_WEBHOOK_URL=https://script.google.com/macros/s/XXXXXXXXXXXX/exec
+GOOGLE_DOC_WEBHOOK_TOKEN=my-secret-token
+```
+
+Правило:
+- `GOOGLE_DOC_WEBHOOK_TOKEN` має збігатися зі значенням `WEBHOOK_TOKEN` у `Code.gs`.
+- якщо `WEBHOOK_TOKEN=""`, тоді змінну `GOOGLE_DOC_WEBHOOK_TOKEN` можна не задавати.
+
+Після зміни `.env` перезапустіть proxy.
+
+### 15.5 Швидка перевірка з ПК (PowerShell)
+
+Перевірка прямого виклику Web App:
+
+```powershell
+$webhook = "https://script.google.com/macros/s/XXXXXXXXXXXX/exec"
+$body = @{
+  action = "doc_append_text"
+  text   = "test from powershell"
+  token  = "my-secret-token"
+} | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri $webhook -ContentType "application/json" -Body $body
+```
+
+Очікувано: відповідь з `ok = true`.
+
+Перевірка через proxy:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health
+```
+
+Очікувано: `apps_script_webhook_configured = True`.
+
+### 15.6 Важливо після редагування `Code.gs`
+
+Після будь-якої зміни коду Apps Script потрібно оновити deployment:
+
+1. `Розгорнути` -> `Керувати розгортаннями`.
+2. Виберіть поточний Web App.
+3. `Редагувати` -> `Розгорнути`.
+
+Якщо цього не зробити, проксі працюватиме зі старою версією скрипта.
+
+### 15.7 Кілька документів і таблиць (для студентів)
+
+- `DOC_ID` у `Code.gs` використовується як документ за замовчуванням.
+- Для запису в інший документ передавайте `docId` у запиті (або через метод бібліотеки з параметром `docId`).
+- Для таблиць завжди можна працювати з різними файлами через `spreadsheetId` + `sheetName`.
+- Це дозволяє одній лабораторній групі працювати з кількома Docs/Sheets без зміни самого proxy.

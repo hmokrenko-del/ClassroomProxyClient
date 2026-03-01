@@ -16,10 +16,4 @@
 #define GEMINI_MODEL "gemini-2.5-flash"
 #define GEMINI_CLIENT_NAME "student-01"
 
-// Sensor pins (adjust for your diagram)
-#define PIN_NTC 34
-#define PIN_LIGHT 35
 
-// Telemetry intervals (milliseconds)
-#define SAMPLE_INTERVAL_MS 500UL
-#define LOG_INTERVAL_MS 10000UL

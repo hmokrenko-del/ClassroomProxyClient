@@ -49,6 +49,44 @@ String extractArrayLines(JsonVariantConst root, const char* key) {
   return text;
 }
 
+String extractTableText(JsonVariantConst root, const char* key) {
+  String text;
+  JsonArrayConst rows = root[key].as<JsonArrayConst>();
+  if (rows.isNull()) {
+    return text;
+  }
+
+  for (JsonVariantConst row : rows) {
+    JsonArrayConst cols = row.as<JsonArrayConst>();
+    if (cols.isNull()) {
+      continue;
+    }
+
+    if (!text.isEmpty()) {
+      text += '\n';
+    }
+
+    bool first = true;
+    for (JsonVariantConst col : cols) {
+      if (!first) {
+        text += '\t';
+      }
+      first = false;
+
+      if (col.is<const char*>()) {
+        text += col.as<const char*>();
+      } else if (col.is<long>()) {
+        text += String(col.as<long>());
+      } else if (col.is<double>()) {
+        text += String(col.as<double>(), 6);
+      } else if (col.is<bool>()) {
+        text += col.as<bool>() ? "true" : "false";
+      }
+    }
+  }
+  return text;
+}
+
 bool parseIntStrict(const String& s, int& out) {
   if (s.isEmpty()) {
     return false;
@@ -75,6 +113,8 @@ ClassroomProxyClient::Config::Config()
       docsAppendPath("/doc/append"),
       driveReadTextPath("/drive/readText"),
       driveReadLinesPath("/drive/readLines"),
+      sheetsAppendRowPath("/sheets/appendRow"),
+      sheetsReadRangePath("/sheets/readRange"),
       defaultGeminiModel("gemini-2.5-flash"),
       clientName("esp32"),
       serialBaud(115200),
@@ -358,7 +398,11 @@ bool ClassroomProxyClient::geminiPrompt(const String& prompt, String& answer, St
   return true;
 }
 
-bool ClassroomProxyClient::docAppendText(const String& text, String& errorText) {
+bool ClassroomProxyClient::docAppendText(
+    const String& text,
+    String& errorText,
+    const String& docId,
+    const String& prefix) {
   if (text.isEmpty()) {
     errorText = "Text is empty.";
     return false;
@@ -368,6 +412,12 @@ bool ClassroomProxyClient::docAppendText(const String& text, String& errorText) 
   requestDoc["text"] = text;
   requestDoc["device"] = config_.clientName;
   requestDoc["session"] = sessionId_;
+  if (!docId.isEmpty()) {
+    requestDoc["docId"] = docId;
+  }
+  if (!prefix.isEmpty()) {
+    requestDoc["prefix"] = prefix;
+  }
 
   DynamicJsonDocument responseDoc(2048);
   return proxyJsonRequest(config_.docsAppendPath, requestDoc, responseDoc, errorText);
@@ -433,6 +483,86 @@ bool ClassroomProxyClient::driveReadLines(const String& fileId, int fromLine, in
   }
   if (text.isEmpty()) {
     errorText = "Proxy returned no 'text' or 'lines'.";
+    return false;
+  }
+  return true;
+}
+
+bool ClassroomProxyClient::sheetsAppendRow(
+    const String& spreadsheetId,
+    const String& sheetName,
+    const String* values,
+    size_t valueCount,
+    String& errorText) {
+  errorText = "";
+  if (spreadsheetId.isEmpty()) {
+    errorText = "spreadsheetId is empty.";
+    return false;
+  }
+  if (sheetName.isEmpty()) {
+    errorText = "sheetName is empty.";
+    return false;
+  }
+  if (values == nullptr || valueCount == 0) {
+    errorText = "values are empty.";
+    return false;
+  }
+
+  DynamicJsonDocument requestDoc(3072);
+  requestDoc["spreadsheetId"] = spreadsheetId;
+  requestDoc["sheetName"] = sheetName;
+  requestDoc["device"] = config_.clientName;
+  requestDoc["session"] = sessionId_;
+  JsonArray arr = requestDoc.createNestedArray("values");
+  for (size_t i = 0; i < valueCount; i++) {
+    arr.add(values[i]);
+  }
+
+  DynamicJsonDocument responseDoc(2048);
+  return proxyJsonRequest(config_.sheetsAppendRowPath, requestDoc, responseDoc, errorText);
+}
+
+bool ClassroomProxyClient::sheetsReadRange(
+    const String& spreadsheetId,
+    const String& sheetName,
+    const String& rangeA1,
+    String& text,
+    String& errorText) {
+  text = "";
+  errorText = "";
+  if (spreadsheetId.isEmpty()) {
+    errorText = "spreadsheetId is empty.";
+    return false;
+  }
+  if (sheetName.isEmpty()) {
+    errorText = "sheetName is empty.";
+    return false;
+  }
+  if (rangeA1.isEmpty()) {
+    errorText = "range is empty.";
+    return false;
+  }
+
+  DynamicJsonDocument requestDoc(2048);
+  requestDoc["spreadsheetId"] = spreadsheetId;
+  requestDoc["sheetName"] = sheetName;
+  requestDoc["range"] = rangeA1;
+  requestDoc["device"] = config_.clientName;
+  requestDoc["session"] = sessionId_;
+
+  DynamicJsonDocument responseDoc(24576);
+  if (!proxyJsonRequest(config_.sheetsReadRangePath, requestDoc, responseDoc, errorText)) {
+    return false;
+  }
+
+  if (responseDoc["text"].is<const char*>()) {
+    text = responseDoc["text"].as<const char*>();
+  }
+  if (text.isEmpty()) {
+    text = extractTableText(responseDoc.as<JsonVariantConst>(), "values");
+  }
+  if (text.isEmpty()) {
+    errorText = "Proxy returned no 'text' or 'values'.";
     return false;
   }
   return true;

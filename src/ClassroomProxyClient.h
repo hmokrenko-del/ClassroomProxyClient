@@ -14,6 +14,8 @@ class ClassroomProxyClient {
     const char* docsAppendPath;
     const char* driveReadTextPath;
     const char* driveReadLinesPath;
+    const char* sheetsAppendRowPath;
+    const char* sheetsReadRangePath;
     const char* defaultGeminiModel;
     const char* clientName;
     uint32_t serialBaud;
@@ -48,9 +50,21 @@ class ClassroomProxyClient {
   bool geminiPrompt(const String& prompt, String& answer, String& errorText, const String& model = "");
 
   // Generic wrappers for proxy endpoints (Gemini/Docs/Drive via Python proxy + Apps Script).
-  bool docAppendText(const String& text, String& errorText);
+  bool docAppendText(const String& text, String& errorText, const String& docId = "", const String& prefix = "");
   bool driveReadText(const String& fileId, String& text, String& errorText);
   bool driveReadLines(const String& fileId, int fromLine, int toLine, String& text, String& errorText);
+  bool sheetsAppendRow(
+      const String& spreadsheetId,
+      const String& sheetName,
+      const String* values,
+      size_t valueCount,
+      String& errorText);
+  bool sheetsReadRange(
+      const String& spreadsheetId,
+      const String& sheetName,
+      const String& rangeA1,
+      String& text,
+      String& errorText);
 
   bool proxyJsonRequest(
       const String& path,

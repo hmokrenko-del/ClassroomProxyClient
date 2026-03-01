@@ -4,16 +4,22 @@ import shutil
 Import("env")  # type: ignore # noqa: F821
 
 project_dir = Path(env.subst("$PROJECT_DIR"))
-lib_dir = Path(__file__).resolve().parents[1]
-templates_dir = lib_dir / "templates"
+pioenv = env.subst("$PIOENV")
 
 
 def find_template(filename: str) -> Path | None:
     candidates = [
         project_dir / "include" / filename,
         project_dir / filename,
-        templates_dir / filename,
+        project_dir / "lib" / "ClassroomProxyClient" / "templates" / filename,
+        project_dir / ".pio" / "libdeps" / pioenv / "ClassroomProxyClient" / "templates" / filename,
     ]
+
+    libdeps_dir = project_dir / ".pio" / "libdeps" / pioenv
+    if libdeps_dir.exists():
+        # Fallback for non-standard package folders (scoped names / hashed dirs).
+        candidates.extend(libdeps_dir.glob(f"*/templates/{filename}"))
+
     return next((path for path in candidates if path.exists()), None)
 
 

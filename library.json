@@ -26,5 +26,8 @@
       "name": "ArduinoJson",
       "version": "^6.21.5"
     }
-  ]
+  ],
+  "build": {
+    "extraScript": "scripts/bootstrap_classroom_config.py"
+  }
 }
