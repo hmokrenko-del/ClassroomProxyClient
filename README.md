@@ -145,6 +145,8 @@ curl http://127.0.0.1:8080/health
 Очікувано:
 - `"ok": true`
 - `"apps_script_webhook_configured": true` (якщо задано webhook URL)
+- `"sheets_append_row_path": "/sheets/appendRow"`
+- `"sheets_read_range_path": "/sheets/readRange"`
 
 Тест запису в Google Doc:
 
@@ -239,6 +241,8 @@ GOOGLE_DOC_WEBHOOK_TOKEN=my-secret-token
 powershell -ExecutionPolicy Bypass -File .\tools\start_proxy.ps1
 ```
 
+`start_proxy.ps1` рекомендований спосіб запуску: скрипт підвантажує `.env` і прибирає старі процеси `proxy.py` на тому ж порту, щоб не було конфліктів.
+
 Якщо `tools/start_proxy.ps1` відсутній, запустіть proxy напряму.
 Для Windows краще використовувати `py -3` (а не `python`), щоб обійти проблему з Microsoft Store alias:
 
@@ -324,6 +328,39 @@ gateway = "ws://localhost:9011"
 5. Підтвердьте дозволи Google (доступ до Docs/Drive/Sheets).
 6. Скопіюйте URL вебпрограми, який закінчується на `/exec`.
 
+### 15.3.1 Важливо для Google Sheets: oauth scopes
+
+Щоб працювали `sheets_append_row` і `sheets_read_range`, у проєкті Apps Script мають бути дозволи `spreadsheets`.
+
+1. Відкрийте `Налаштування проєкту` (Project Settings).
+2. Увімкніть `Показати файл маніфесту appsscript.json`.
+3. У `appsscript.json` переконайтесь, що є:
+
+```json
+"oauthScopes": [
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/drive",
+  "https://www.googleapis.com/auth/spreadsheets"
+]
+```
+
+4. Збережіть файл.
+
+### 15.3.2 Примусова авторизація Sheets
+
+Після додавання scope виконайте один раз тестову функцію в `Code.gs`:
+
+```javascript
+function authSheets() {
+  SpreadsheetApp.openById("PUT_SPREADSHEET_ID_HERE").getName();
+}
+```
+
+Далі:
+1. Виберіть `authSheets` у списку функцій біля кнопки `Запустити`.
+2. Натисніть `Запустити` і підтвердіть дозволи Google.
+3. Після цього обов'язково оновіть Web App deployment (`Керувати розгортаннями` -> `Редагувати` -> `Розгорнути`).
+
 ### 15.4 Прив’яжіть Web App до proxy
 
 У `.env` заповніть:
@@ -355,6 +392,34 @@ Invoke-RestMethod -Method Post -Uri $webhook -ContentType "application/json" -Bo
 
 Очікувано: відповідь з `ok = true`.
 
+Перевірка запису в Google Sheets (прямо у Web App):
+
+```powershell
+$webhook = "https://script.google.com/macros/s/XXXXXXXXXXXX/exec"
+$body = @{
+  action = "sheets_append_row"
+  spreadsheetId = "PUT_SPREADSHEET_ID_HERE"
+  sheetName = "Sheet1"
+  values = @("2026-03-01T12:00:00Z","student-01","23.7","81")
+  token = "my-secret-token"
+} | ConvertTo-Json -Depth 5 -Compress
+Invoke-RestMethod -Method Post -Uri $webhook -ContentType "application/json" -Body $body
+```
+
+Перевірка читання з Google Sheets (прямо у Web App):
+
+```powershell
+$webhook = "https://script.google.com/macros/s/XXXXXXXXXXXX/exec"
+$body = @{
+  action = "sheets_read_range"
+  spreadsheetId = "PUT_SPREADSHEET_ID_HERE"
+  sheetName = "Sheet1"
+  range = "A1:D20"
+  token = "my-secret-token"
+} | ConvertTo-Json -Depth 5 -Compress
+Invoke-RestMethod -Method Post -Uri $webhook -ContentType "application/json" -Body $body
+```
+
 Перевірка через proxy:
 
 ```powershell
@@ -362,6 +427,17 @@ Invoke-RestMethod http://127.0.0.1:8080/health
 ```
 
 Очікувано: `apps_script_webhook_configured = True`.
+
+Перевірка через proxy (Sheets):
+
+```powershell
+$body = @{
+  spreadsheetId = "PUT_SPREADSHEET_ID_HERE"
+  sheetName = "Sheet1"
+  values = @("2026-03-01T12:00:00Z","student-01","23.7","81")
+} | ConvertTo-Json -Depth 5 -Compress
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8080/sheets/appendRow" -ContentType "application/json" -Body $body
+```
 
 ### 15.6 Важливо після редагування `Code.gs`
 
@@ -372,6 +448,10 @@ Invoke-RestMethod http://127.0.0.1:8080/health
 3. `Редагувати` -> `Розгорнути`.
 
 Якщо цього не зробити, проксі працюватиме зі старою версією скрипта.
+
+Ознака, що deployment застарілий або неавторизований:
+- `Unknown action: sheets_append_row`
+- `Exception: У вас немає дозволу викликати функцію SpreadsheetApp.openById`
 
 ### 15.7 Кілька документів і таблиць (для студентів)
 
